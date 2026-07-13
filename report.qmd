@@ -1,0 +1,168 @@
+---
+title: "Python-to-R Data Pipeline Demonstration"
+author: "Alec Brooks"
+date: today
+
+format:
+  html:
+    theme: darkly
+    toc: true
+    code-fold: false
+
+execute:
+  warning: false
+  message: false
+---
+
+# Overview
+
+This report demonstrates a reproducible mixed-language data pipeline using Python, R, and Quarto.
+
+Python is used to retrieve and prepare the source data, including selecting relevant variables and removing incomplete observations. The cleaned pandas DataFrame is then transferred to R for statistical modeling, inference, visualization, and prediction. Quarto combines each stage into a single reproducible report.
+
+# Setup
+
+## R: Python integration
+
+This is required for Python to pass off data to R within a Quarto report.
+
+```{r}
+#| label: configure-python
+
+library(reticulate)
+use_python("/usr/bin/python", required = TRUE)
+```
+
+## Python: Data acquisition
+
+The Palmer Penguins dataset is downloaded directly from its public repository, allowing the report to be reproduced without relying on a local database or file.
+
+```{python}
+#| label: download-data
+
+import pandas as pd
+
+url = "https://raw.githubusercontent.com/allisonhorst/palmerpenguins/main/inst/extdata/penguins.csv"
+
+penguins = pd.read_csv(url)
+
+penguins.head()
+```
+
+## Python: Data preparation
+
+Only the variables required for the analysis are retained. Observations containing missing values in these variables are removed.
+
+```{python}
+#| label: clean-data
+
+penguins_clean = (
+    penguins[
+        [
+            "species",
+            "flipper_length_mm",
+            "body_mass_g"
+        ]
+    ]
+    .dropna()
+)
+
+penguins_clean.head()
+```
+
+# Analysis
+
+## R: Data transfer
+
+The cleaned pandas DataFrame is transferred from the Python session into R using `reticulate`.
+
+```{r}
+#| label: transfer-data
+
+penguins_r <- py$penguins_clean
+```
+
+## R: Linear regression
+
+A multiple linear regression model is fitted to estimate body mass using flipper length and species.
+
+```{r}
+#| label: fit-model
+
+model <- lm(
+  body_mass_g ~ flipper_length_mm + species,
+  data = penguins_r
+)
+
+```
+
+The coefficient p-values are extracted separately for concise presentation.
+
+```{r}
+#| label: model-p-values
+
+summary(model)$coefficients[, "Pr(>|t|)"]
+```
+
+# Visualization
+
+The scatter plot shows the relationship between flipper length and body mass for each penguin species. Separate regression lines are fitted within each species.
+
+```{r}
+#| label: fig-flipper-mass-species
+#| fig-cap: "Relationship between flipper length and body mass by species"
+
+library(ggplot2)
+
+ggplot(
+  penguins_r,
+  aes(
+    x = flipper_length_mm,
+    y = body_mass_g,
+    color = species
+  )
+) +
+  geom_point(alpha = 0.7, size = 2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Penguin Body Mass by Flipper Length",
+    x = "Flipper length (mm)",
+    y = "Body mass (g)",
+    color = "Species"
+  ) +
+  theme_minimal()
+```
+
+# Prediction
+
+The fitted model is used to predict body mass for new combinations of flipper length and species. Prediction intervals represent the expected range for individual penguins with these characteristics.
+
+```{r}
+#| label: predictions
+
+new_penguins <- expand.grid(
+  flipper_length_mm = c(180, 200, 220),
+  species = c("Adelie", "Chinstrap", "Gentoo")
+)
+
+predictions <- predict(
+  model,
+  newdata = new_penguins,
+  interval = "prediction"
+)
+
+prediction_table <- cbind(
+  new_penguins,
+  predictions
+)
+
+prediction_table
+```
+
+# Conclusion
+
+This report demonstrated a reproducible mixed-language workflow in which Python was used to retrieve and clean the Palmer Penguins dataset before passing the prepared data to R for analysis.
+
+The regression results showed that flipper length is a strong predictor of body mass. Species also contributed additional explanatory value, reflecting meaningful differences in body size among Adelie, Chinstrap, and Gentoo penguins. The visualization reinforced these findings by showing a clear positive relationship between flipper length and body mass within each species.
+
+The fitted model was then used to generate body-mass predictions for new observations. Together, these steps demonstrate how Python, R, and Quarto can be combined into a single reproducible pipeline for data acquisition, preparation, statistical modeling, visualization, and prediction.
